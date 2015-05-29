@@ -1,3 +1,8 @@
+## TODO(d): ...
+## TODO(d): Have axis different colors (transition from X to Y) depending on frequency like:
+##          http://2.bp.blogspot.com/-QJUnXROuOaU/VJP3jquLCYI/AAAAAAAACjU/kWzYMcrFMWY/s1600/spectra%2BSNV%2Bplot%2B1.JPG
+##          https://stackoverflow.com/questions/17258787/formating-of-persp3d-plot
+
 # Take the start and end
 # Use plot3D to draw the 3d-plot
 
@@ -51,7 +56,8 @@ post.weeks <- ceiling(passed.time$sr.run.time)
 ## 13 %/% 4 = 3
 ## Create bins for time of day in 2 hour bins
 ## E.g., 12 AM - 2 AM or 6 PM - 8 PM
-x.plot <- 1:12
+#x.plot <- 1:12
+x.plot <- seq(1,24,2)
 
 ## Allow for weeks or months to be the y axis
 ## Assume that one month is roughly equivalent to 4 weeks for now
@@ -65,7 +71,6 @@ if(y.units=="month") {
 ## Initialize with zeros?
 z.plot <- matrix(0, nrow=length(y.plot), ncol=length(x.plot))
 
-
 ## Now populate the z matrix with the frequencies
 for(i in 1:length(post.weeks)) {
   
@@ -77,12 +82,15 @@ for(i in 1:length(post.weeks)) {
     i.w <- i.w + 1
   }
   
+  ## Create a time as close to midnight for chats3$post.time[i]'s day to work out what time the post is.
   post.date <- format(as.POSIXct(chats3$post.time[i]), "%Y-%m-%d")
-  post.ref.date <- paste(post.date, "23:59:59")
-  time.until.eod <- as.numeric(difftime(as.POSIXct(post.ref.date), as.POSIXct(chats3$post.time[i]), units="mins"))
+
+#  post.ref.date <- paste(post.date, "23:59:59")
+  post.ref.date <- paste(post.date, "00:00:00")
+  time.until.eod <- as.numeric(difftime(as.POSIXct(chats3$post.time[i]), as.POSIXct(post.ref.date), units="mins"))
 
   ## ToDo fix this so that it is the x-axis
-  x10 <- (time.until.eod %/% 60 ) / 2
+  x10 <- ((time.until.eod %/% 60) %/% 2) + 1
 
 #   if(is.na(z.plot[i.w, x10])) {
 #     z.plot[i.w, x10] <- 1
@@ -104,6 +112,6 @@ for(i in 1:length(post.weeks)) {
 ## Very nice time-series graph
 ## https://stackoverflow.com/questions/1896419/plotting-a-3d-surface-plot-with-contour-map-overlay-using-r
 
-## Now graph the results
-persp3d(x.plot, y.plot, z.plot, xlim=c(0,24), xlab = "Time of Day", ylab = "Month Number", zlab = "Post Frequency", col="skyblue")
+## Now graph the results using persp3d from package rgl
+persp3d(x.plot, y.plot, z.plot, xlab = "Time of Day", ylab = "Month Number", zlab = "Post Frequency", box = FALSE, col="skyblue")
 
