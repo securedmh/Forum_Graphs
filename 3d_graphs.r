@@ -1,105 +1,155 @@
-## TODO(d): ...
-## TODO(d): Have axis different colors (transition from X to Y) depending on frequency like:
-##          http://2.bp.blogspot.com/-QJUnXROuOaU/VJP3jquLCYI/AAAAAAAACjU/kWzYMcrFMWY/s1600/spectra%2BSNV%2Bplot%2B1.JPG
-##          https://stackoverflow.com/questions/17258787/formating-of-persp3d-plot
-
-# Take the start and end
-# Use plot3D to draw the 3d-plot
+## TODO(securedmh): Try and change to POSIXct to include timezone (http://www.noamross.net/blog/2014/2/10/using-times-and-dates-in-r---presentation-code.html)
+## TODO(securedmh): Normalize the time of day better by finding out what timezone the forum was on.
 
 ## Required Libraries
 library(plyr)
 library(rgl)
 
-# Recommended Libraries
-#library(lubridate)
 
-## Put constant vars here
-y.units <- "month"
+## Constant Variables
 
-# Load the chat data in the form:
-# Numeric identifier, Username, Time of Post
-# Posts are in ascending order because each subsequent post was written after the previous one (except when it wasn't)
-chats <- read.csv("data/DPRStuff.csv")
-
-# Order the rows from earliest post to latest post.
-chats3 <- chats[order(chats[ ,"post.time"]), ]
-
-# In ascending order, the earliest post time will also be at the top of the list (chats3)
-#first.post <- chats3[1, "post.time"]
+## Total number of forum posts made by DPR
+kTotalPosts <- 536
 
 ## To avoid dealing with the first post occurring at 0 minutes, we will assume that the first forum post was made at the beginning of the
-## week of DPR's first post. The first DPR post was made on Saturday, 18th of June. There set first post for 15th of June, 7 AM.
-first.post <- as.POSIXct("2011-06-15 07:00:00")
+## week of DPR's first post, which was made on Saturday, 18th of June. Therefor assume the first forum post was 15th of June, 9 AM.
+## The forum was believed to be running on GMT so assume that as well and use POSIXlt for the zone.
+kFirstPost <- "2011-06-15 09:00:00"
+kLastPost <- "2013-10-02 00:00:00"
 
-## ToDo: Normalize the time of day better
 
-# Ross was on the West Coast so set time as Pacific.
-#difftime(as.POSIXlt(chats[ ,"post.time"][[500]], format="%Y-%m-%d"), as.POSIXlt(first.post, format="%Y-%m-%d"), units="mins")
+## Set units of the y-axis of graph
+y.units <- "month"
 
-# Calculate the length of time that SR had been running when a post was made.
-## N.B.: Try and change to POSIXct to include timezone (http://www.noamross.net/blog/2014/2/10/using-times-and-dates-in-r---presentation-code.html)
-passed.time <- ddply(chats3, .(username), summarize, sr.run.time = difftime(as.POSIXlt(post.time), as.POSIXlt(first.post), units="weeks"))
+# Set working directory to the project directory and store csv file in seperate 'data' dir
+setwd("~/code/r_projects/forum_graphs")
 
-# Record the number of weeks that have passed since the first post
-## Take the ceiling to reflect that it is the nth week. E.g., the first seven days are in week 1 but dividing by 7 falls short.
-post.weeks <- ceiling(passed.time$sr.run.time)
+# Load the chat data in the form: Numeric identifier, Username, Time of Post
+# Posts are in ascending order because each subsequent post was written after the previous one (except when it wasn't)
+chats.new.to.old <- read.csv("data/DPRStuff.csv")
 
-# Just do this for now as it should be 1 (or equiv to week 1)
-## Can be removed now that we assume the first post happens a short time before DPR
-#post.weeks[1] <- 1
+# Order the rows from earliest post to latest post.
+chats <- chats.new.to.old[order(chats.new.to.old[ ,"post.time"]), ]
 
-## Nothing to see here, move along.
-#post.hours <- as.numeric(passed.time$sr.run.time) %% rep(10, nrow(passed.time))
-#post.hours2 <- (passed.time$sr.run.time - floor(passed.time$run.time)) /7
+# Calculate the length of time, in weeks, that SR had been running when a post was made.
+# weeks.passed <- ddply(chats, .(username), summarize, sr.run.time = difftime(as.POSIXct(post.time, tz = "GMT"), as.POSIXct(kFirstPost, tz = "GMT"), "GMT", units="weeks"))
 
-## 12 %% 4 = 0
-## 13 %/% 4 = 3
-## Create bins for time of day in 2 hour bins
+## Determine the week and month of operation for each post made
+## E.g., the first seven days of operation were week 1 so divide by 7 and take the ceiling of the result to reflect that.
+chats.extended <- ddply(chats, .(username, post.time), summarise, 
+                          week.number = as.factor(ceiling(difftime(as.POSIXct(post.time, tz = "GMT"), as.POSIXct(kFirstPost, tz = "GMT"), "GMT", units="weeks"))),
+                          month.number = as.factor(sapply(post.time, function(x){
+                            length(seq.POSIXt(as.POSIXct(kFirstPost, tz = "GMT"), as.POSIXct(x, tz = "GMT"), "month"))
+                          }))
+)
+
+## X-axis is time of day so create bins for every 2 hours
 ## E.g., 12 AM - 2 AM or 6 PM - 8 PM
-#x.plot <- 1:12
-x.plot <- seq(1,24,2)
+x.plot <- seq(0,22,2)
 
-## Allow for weeks or months to be the y axis
-## Assume that one month is roughly equivalent to 4 weeks for now
-## Also hard code 120 to not have to worry about finding the value of last week.
+## Y-axis is week or month of SR operating
 if(y.units=="month") {
-  y.plot <- 1:(120/4)
+  max.month <- as.integer(as.character(chats.extended$month.number[kTotalPosts]))
+  y.plot <- seq(1, max.month, 1) 
 } else {
-  y.plot <- 1:120
+  y.plot <- as.integer(as.character(chats.extended$week.number[kTotalPosts]))
 }
 
-## Initialize with zeros?
+## Initialize z variable as for persp3d plot
+## For DPR forum posts by month and time of day matrix should be 
 z.plot <- matrix(0, nrow=length(y.plot), ncol=length(x.plot))
 
-## Now populate the z matrix with the frequencies
-for(i in 1:length(post.weeks)) {
+## Now populate the z matrix with the amount of posts each week/month for a day/time of day
+for(i in 1:length(chats.extended$month.number)) {
   
-  ## i.w is the ... As the y-axis is in months the first four weeks all occur together, hence the %/%. +1 starts the week count at 1.
-  i.w <- (as.numeric(post.weeks[i]) %/% 4) ##@ToDo: fix the trailing digit
+  ## Find which month of operation
+  operating.month <- as.integer(as.character(chats.extended$month.number[i]))
   
-  ## Only need the trailing digit when the modulo of the post weeks is not zero 
-  if((as.numeric(post.weeks[i]) %% 4)!=0) {
-    i.w <- i.w + 1
-  }
-  
-  ## Create a time as close to midnight for chats3$post.time[i]'s day to work out what time the post is.
-  post.date <- format(as.POSIXct(chats3$post.time[i]), "%Y-%m-%d")
+  ## R doesn't compare times of day well so create a time as close to midnight
+  ## for the day of each post to work out what time the post is.
+  post.date <- format(as.POSIXct(chats.extended$post.time[i], tz = "GMT", "%Y-%m-%d"))
 
 #  post.ref.date <- paste(post.date, "23:59:59")
   post.ref.date <- paste(post.date, "00:00:00")
-  time.until.eod <- as.numeric(difftime(as.POSIXct(chats3$post.time[i]), as.POSIXct(post.ref.date), units="mins"))
+  time.until.eod <- as.numeric(difftime(as.POSIXct(chats.extended$post.time[i]), as.POSIXct(post.ref.date), units="mins"))
+  x.point <- ((time.until.eod %/% 60) %/% 2) + 1
 
-  ## ToDo fix this so that it is the x-axis
-  x10 <- ((time.until.eod %/% 60) %/% 2) + 1
+  z.plot[operating.month, x.point] <- z.plot[operating.month, x.point] + 1
 
-#   if(is.na(z.plot[i.w, x10])) {
-#     z.plot[i.w, x10] <- 1
-#   } else {
-  z.plot[i.w, x10] <- z.plot[i.w, x10] + 1
-#  }
-#  i.post.time <- format(as.POSIXlt(chats3$post.time[i.w]), "%H:%M:%S")
-#  as.POSIXlt(format("01/01/1990 23:59:59"), "%H:%M:%S")
 }
+
+## Colour based on frequency (z-axis)
+# http://stackoverflow.com/questions/17258787/formating-of-persp3d-plot
+# http://entrenchant.blogspot.com/2014/03/custom-tick-labels-in-r-perspective.html
+nbcol = 100
+color = rev(rainbow(nbcol, start = 0/6, end = 4/6))
+zcol  = cut(z.plot, nbcol)
+
+## Now graph the results using persp3d from package rgl
+persp3d(x.plot, y.plot, z.plot, theta=50, phi=25, expand=0.75, col=color[zcol],
+        ticktype="detailed", xlab = "Time of Day", ylab = "Month Number",
+        zlab = "Post Frequency", box = FALSE, axes = FALSE)
+
+## Label the axis
+title3d(main = "Frequency of Posts By DPR on SR1 Forum")
+
+## Use axes3d and axis3d to label the graph
+x.axes.labels <- c("00:00", "02:00", "04:00", "06:00", "08:00", "10:00", "12:00", "14:00", "16:00", "18:00", "20:00", "22:00")
+
+# repositions x axis and draws default z axis
+axes3d(edges = c('x--'), labels = x.axes.labels, nticks = length(x.plot))
+
+# Use custom labels
+#axis3d(edge = 'y+-', at = seq(500,2000,by=500), 
+#       labels = rownames(fd)[seq(500,2000,by=500)] )
+#y.axes.labels.all <- c(
+#  "Jun 2011", "Jul 2011", "Aug 2011", "Sep 2011", "Oct 2011", "Nov 2011", "Dec 2011",
+#  "Jan 2012", "Feb 2012", "Mar 2012", "Apr 2012", "May 2012", "Jun 2012", "Jul 2012", "Aug 2012", "Sep 2012", "Oct 2012", "Nov 2011", "Dec 2011",
+#  "Jan 2013", "Feb 2013", "Mar 2013", "Apr 2013", "May 2013", "Jun 2013", "Jul 2013", "Aug 2013", "Sep 2013", "Oct 2013"
+#)
+
+# Every second month of operation
+#y.axes.labels <- c(
+#  "Jun 2011", "Aug 2011", "Oct 2011", "Dec 2011",
+#  "Feb 2012", "Apr 2012", "Jun 2012", "Aug 2012", "Oct 2012", "Dec 2011",
+#  "Feb 2013", "Apr 2013", "Jun 2013", "Aug 2013", "Oct 2013"
+#)
+
+y.axes.labels <- format(seq.POSIXt(as.POSIXct(kFirstPost), as.POSIXct(kLastPost), by = "2 months"), format = "%Y-%m-%d")
+
+axis3d(edge = 'y--', at = seq(1,28,2), labels = y.axes.labels)
+
+## Unused Code
+# Calculate the month of operation each post was made during
+#post.month.number1 <- lapply(chats$post.time, function(x){
+#print(typeof(x))
+#  length(seq.POSIXt(as.POSIXct(kFirstPost, tz = "GMT"), as.POSIXct(x, tz = "GMT"), "month"))
+#})
+
+## Determine the month of operation each post was made during
+#post.month.number <- ddply(chats, .(username), .fun = function(x){
+#  lapply(x$post.time, function(xx){
+#print(typeof(x))
+#    length(seq.POSIXt(as.POSIXct(kFirstPost, tz = "GMT"), as.POSIXct(xx, tz = "GMT"), "month"))
+#  })
+#   print(typeof(x))
+#   View(x)
+#   print(typeof(x$post.time))
+#   print(x$post.time)
+#   print(as.POSIXct(x$post.time, tz = "GMT"))
+#  print(length(seq.POSIXt(as.POSIXct(kFirstPost, tz = "GMT"), as.POSIXct(x$post.time, tz = "GMT"), "month")))
+#},
+#.inform = TRUE)
+#post.month.number <- ddply(chats, .(username), summarise, sr.run.time = length(seq.POSIXt(as.POSIXct(kFirstPost, tz = "GMT"), as.POSIXct(post.time, tz = "GMT"), "month")))
+
+## i.w is the ... As the y-axis is in months the first four weeks all occur together, hence the %/%. +1 starts the week count at 1.
+## WHAT THE FUCK DID I DO HERE?
+#i.w <- (as.numeric(post.week.number[i]) %/% 4) ##@ToDo: fix the trailing digit
+
+## Only need the trailing digit when the modulo of the post weeks is not zero 
+#if((as.numeric(post.week.number[i]) %% 4)!=0) {
+#  i.w <- i.w + 1
+#}
 
 # N.B. Chats from Saturday, 2011-06-18 until Tuesday 2013-10-01
 #total.dates <- nrow(chats)
@@ -111,7 +161,3 @@ for(i in 1:length(post.weeks)) {
 
 ## Very nice time-series graph
 ## https://stackoverflow.com/questions/1896419/plotting-a-3d-surface-plot-with-contour-map-overlay-using-r
-
-## Now graph the results using persp3d from package rgl
-persp3d(x.plot, y.plot, z.plot, xlab = "Time of Day", ylab = "Month Number", zlab = "Post Frequency", box = FALSE, col="skyblue")
-
