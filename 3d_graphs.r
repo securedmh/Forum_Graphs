@@ -1,5 +1,6 @@
 ## TODO(securedmh): Try and change to POSIXct to include timezone (http://www.noamross.net/blog/2014/2/10/using-times-and-dates-in-r---presentation-code.html)
 ## TODO(securedmh): Normalize the time of day better by finding out what timezone the forum was on.
+## TODO(securedmh): Do time of day and day of week plots next to each other?
 
 ## Required Libraries
 library(plyr)
@@ -79,6 +80,9 @@ for(i in 1:length(chats.extended$month.number)) {
 }
 
 ## Colour based on frequency (z-axis)
+# http://stackoverflow.com/questions/17252702/3d-plot-in-r-better-visible-surface
+# http://www.carlislerainey.com/2012/12/24/labeling-the-vertical-axis-in-r-plots/
+# http://stackoverflow.com/questions/9658246/r-positioning-labels-and-axes-with-rgl-plot3d
 # http://stackoverflow.com/questions/17258787/formating-of-persp3d-plot
 # http://entrenchant.blogspot.com/2014/03/custom-tick-labels-in-r-perspective.html
 nbcol = 100
@@ -116,8 +120,11 @@ axes3d(edges = c('x--'), labels = x.axes.labels, nticks = length(x.plot))
 #)
 
 y.axes.labels <- format(seq.POSIXt(as.POSIXct(kFirstPost), as.POSIXct(kLastPost), by = "2 months"), format = "%Y-%m-%d")
-
 axis3d(edge = 'y--', at = seq(1,28,2), labels = y.axes.labels)
+
+## Take snapshots at different positions and save as pngs
+## Doesn't work in Qubes
+#movie3d(spin3d(axis = c(0,0,1), rpm = 10), duration=6,  type = "png")
 
 ## Unused Code
 # Calculate the month of operation each post was made during
